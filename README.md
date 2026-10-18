@@ -17,8 +17,8 @@ Pick an equipment slot, type the value you want for each rune, and it crafts the
 - **Works fewer items when that is enough.** When a few of your items can still give you a finished one, the preview
   offers buttons such as **Work 3 -- 95%**: the run starts on only the items likeliest to finish, with the odds that at
   least one comes out with every stat.
-- **Always works the lowest item first**, and never risks your last item on a dump stat (Spell Damage Increase, Luck,
-  Weapon Damage and the like).
+- **Always works the lowest item first, and never risks your last item.** A run stops with one item of the slot
+  left.
 - **Templates.** Save the runes and values you set under a name; every slot with all of those runes offers it as a
   button. Up to 10.
 - **Works from a chest.** If the slot is empty in your pack, target a chest of those items near your Home rune; it works
