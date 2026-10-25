@@ -115,18 +115,11 @@ import heapq          # simulate_stat_trial()'s min-heap -- see its own comment 
 import datetime
 import math
 import time
-try:
-    from Omni_DiskLog import disk_log   # every line to OmniData/Omni_ScriptLog_<day>.txt (2026-09-24)
-except ImportError:
-    # THE SHARED COPY SHIPS AS ONE FILE (2026-09-26): another player has no disk-log module -- the journal still
-    # gets every line, the disk copy is simply skipped.
-    def disk_log(text):
-        return False
 import os
 import random
 
 SCRIPT_TITLE = "Omni Runecrafting"
-SCRIPT_VERSION = "1.0.0"        # THE SIGNED UPDATE compares the newest release with this
+SCRIPT_VERSION = "1.0.1"        # THE SIGNED UPDATE compares the newest release with this
 
 # EVERY WINDOW IS WAITED FOR LIKE THE PREFETCH (owner, 2026-10-02: "It sounds like all gumps should work like prefetch").
 # Gumps.WaitForGump() is never used for a server window: RazorEnhanced 1.0.0.14 polls ONE shared "newest window" slot
@@ -887,6 +880,8 @@ HOOKS = {
                               #   chosen runes to it instead of applying them, and no chest is offered
     "setup_rows": None,       # fn(rows): add rows to the setup screen (the 7-field row shape setup_item_rows() builds)
     "setup_button": None,     # fn(clicked) -> True when it handled a press on one of its own rows' buttons
+    "log_line": None,         # fn(text): every line log() says, as the journal shows it (2026-10-25, NOTHING OF OURS SHIPS:
+                              #   the Tamer's script log is plugged in here by our side, never imported by this file)
 }
 
 
@@ -2447,10 +2442,39 @@ _last_journal_line = [0.0]
 LAST_STOP_SAID = [""]
 
 
+# THE LOG IS IN THE SCRIPT'S FOLDER (owner, 2026-10-25: a player asked for "logs from the script folder" and found none).
+# Every line went to the journal and, through Omni_DiskLog -- imported here behind a fallback -- to the Tamer's own script
+# log, a module only our install has: another player's copy wrote nothing to disk at all, silently. Every line now goes to
+# Log_<year>_<month>_<day>.txt in this script's own data folder (script_data_dir(), beside Setup.txt), on every install --
+# the file a player can send. NOTHING OF OURS SHIPS (owner: "a dependency on an external library should raise big
+# alarms"): this file imports no module of ours at all; our side hands the Tamer's script log in as HOOKS["log_line"].
+LOG_FILENAME_FORMAT = "Log_%Y_%m_%d.txt"
+
+
+def folder_log(text):
+    """Append one journal-shaped line to today's log in script_data_dir() -- THE LOG IS IN THE SCRIPT'S FOLDER. True when
+    written; never raises."""
+    try:
+        if not ensure_script_data_dir():
+            return False
+        now = datetime.datetime.now()
+        with open(script_data_path(now.strftime(LOG_FILENAME_FORMAT)), "a") as fh:
+            fh.write("[{}]  {}\n".format(now.strftime("%m/%d/%Y %H:%M:%S"), text))
+        return True
+    except Exception:
+        return False
+
+
 def log(msg, hue=68):
     if hue == 33:
         LAST_STOP_SAID[0] = msg
-    disk_log("--> " + msg)
+    folder_log("--> " + msg)    # THE LOG IS IN THE SCRIPT'S FOLDER
+    _sink = HOOKS.get("log_line")
+    if _sink is not None:       # called directly, not by call_hook(): its failure line would come back here
+        try:
+            _sink("--> " + msg)
+        except Exception:
+            pass
     if msg.startswith(RUNECRAFT_DISK_ONLY) and time.time() - _last_journal_line[0] < RUNECRAFT_JOURNAL_PULSE_SECONDS:
         return
     _last_journal_line[0] = time.time()
@@ -5989,9 +6013,8 @@ def run_slot_application(property_def, slot_def, target_stat, restrict_serials=N
             eligible = [it for it in eligible if it.Serial not in refused_items]
         if len(eligible) <= min_eligible:
             if min_eligible > 0:
-                log("Stopping: only {} '{}' item(s) left in the backpack -- protecting the last "
-                    "one ('{}' is a Dump Stat).".format(
-                        len(eligible), slot_def["label"], property_def["label"]))
+                log("Stopping '{}': only {} '{}' item(s) left in the backpack -- the last one is never "
+                    "risked.".format(property_def["label"], len(eligible), slot_def["label"]))
             else:
                 log("Stopping: no '{}' item(s) left in the backpack.".format(slot_def["label"]))
             report_exclusions("Finished")
