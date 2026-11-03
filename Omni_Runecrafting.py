@@ -119,7 +119,7 @@ import os
 import random
 
 SCRIPT_TITLE = "Omni Runecrafting"
-SCRIPT_VERSION = "1.0.1"        # THE SIGNED UPDATE compares the newest release with this
+SCRIPT_VERSION = "1.0.2"        # THE SIGNED UPDATE compares the newest release with this
 
 # EVERY WINDOW IS WAITED FOR LIKE THE PREFETCH (owner, 2026-10-02: "It sounds like all gumps should work like prefetch").
 # Gumps.WaitForGump() is never used for a server window: RazorEnhanced 1.0.0.14 polls ONE shared "newest window" slot
@@ -5949,8 +5949,9 @@ def run_slot_application(property_def, slot_def, target_stat, restrict_serials=N
     # later restored as a bug fix: that was correct policy then, this is correct policy now, and
     # the reason is expectation rather than mechanics -- a batch that eats the last item leaves the
     # operator with nothing to show for a target it may well have met. The dump categories (SDI,
-    # Luck) are unaffected; they already used this floor.
-    min_eligible = 1
+    # Luck) are unaffected; they already used this floor. APPLY_MIN_ELIGIBLE (2026-11-03): the same floor
+    # prepare_and_apply_one_stat() checks before it crafts anything.
+    min_eligible = APPLY_MIN_ELIGIBLE
     # RETRY-ON-FAIL counters (2026-08-27) -- see RUNECRAFTING_FAIL_RETRY_ATTEMPTS' own comment.
     # Defined OUTSIDE the loop so they persist across iterations (a genuine "N consecutive fails"
     # count), each reset to 0 the moment that specific step succeeds so an old, unrelated failure
@@ -8081,6 +8082,14 @@ def craft_more_runes_if_needed(property_def, eligible_items, target_stat):
     completed = craft_n_runes(property_def, craft_now)
     return completed > 0
 
+# THE LAST ITEM IS NEVER RISKED, AND NO RUNE IS MADE FOR IT (2026-11-03 00:4x, the owner: "it's down to 1 weapon left, so it
+# stopped applying runes, but it keeps crafting runes as if it intends to apply more"). The application loop stops at
+# this many eligible items left (the last one is never risked); the pre-flight checks the same floor first, so a stat
+# with nothing it may risk pulls and crafts no runes -- 00:43-00:44 it crafted 9 Hit Magic Arrow and 8 Hit Poison Area
+# runes for a single weapon, then stopped on each at once.
+APPLY_MIN_ELIGIBLE = 1
+
+
 def prepare_and_apply_one_stat(property_def, slot_def, target_stat, restrict_serials=None):
     """The pre-flight-estimate + bulk-craft + apply sequence for ONE requested (property_def,
     target_stat) pair -- extracted (2026-08-27) from the old single-stat run_application_flow()
@@ -8106,6 +8115,14 @@ def prepare_and_apply_one_stat(property_def, slot_def, target_stat, restrict_ser
         return True
 
     eligible = find_slot_items(slot_def, restrict_serials=restrict_serials)
+    _winners, _excl, _cats = partition_slot_items(slot_def)
+    if _cats and _excl:                    # the application loop's own majority category
+        _keep = set(it.Serial for it in _winners)
+        eligible = [it for it in eligible if it.Serial in _keep]
+    if len(eligible) <= APPLY_MIN_ELIGIBLE:
+        log("Skipping '{}': only {} '{}' item(s) to work on -- the last one is never risked, so no rune is pulled or "
+            "crafted for it.".format(property_def["label"], len(eligible), slot_def["label"]))
+        return False
     _est = estimate_applications_needed(eligible, property_def, target_stat)
     applications_needed, runes_needed, expected_reached, expected_broken = _est[0], _est[1], _est[2], _est[3]
     if runes_needed > 0:
